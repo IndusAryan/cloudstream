@@ -16,6 +16,7 @@ open class Vidplay : ExtractorApi() {
     override val name = "Vidplay"
     override val mainUrl = "https://vidplay.site"
     override val requiresReferer = true
+    open val key = "https://raw.githubusercontent.com/Claudemirovsky/worstsource-keys/keys/keys.json"
 
     override suspend fun getUrl(
         url: String,
@@ -44,8 +45,7 @@ open class Vidplay : ExtractorApi() {
     }
 
     private suspend fun getKeys(): List<String> {
-        return app.get("https://raw.githubusercontent.com/Claudemirovsky/worstsource-keys/keys/keys.json")
-            .parsed()
+        return app.get(key).parsed()
     }
 
     private suspend fun callFutoken(id: String, url: String): String? {

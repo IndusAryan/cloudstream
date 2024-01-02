@@ -25,6 +25,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
+import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator
 import com.lagradost.cloudstream3.APIHolder
 import com.lagradost.cloudstream3.APIHolder.allProviders
@@ -32,6 +33,7 @@ import com.lagradost.cloudstream3.AcraApplication.Companion.getKey
 import com.lagradost.cloudstream3.AcraApplication.Companion.openBrowser
 import com.lagradost.cloudstream3.AcraApplication.Companion.setKey
 import com.lagradost.cloudstream3.CommonActivity
+import com.lagradost.cloudstream3.MainActivity
 import com.lagradost.cloudstream3.R
 import com.lagradost.cloudstream3.databinding.FragmentLibraryBinding
 import com.lagradost.cloudstream3.mvvm.Resource
@@ -147,6 +149,11 @@ class LibraryFragment : Fragment() {
         activity?.theme?.resolveAttribute(android.R.attr.textColor, searchExitIconColor, true)
         searchExitIcon?.setColorFilter(searchExitIconColor.data)
 
+        val searchCallback = Runnable {
+            val newText = binding?.mainSearch?.query?.toString() ?: return@Runnable
+            libraryViewModel.sort(ListSorting.Query, newText)
+        }
+
         binding?.mainSearch?.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
                 libraryViewModel.sort(ListSorting.Query, query)
@@ -163,7 +170,12 @@ class LibraryFragment : Fragment() {
                     return true
                 }
 
-                libraryViewModel.sort(ListSorting.Query, newText)
+                binding?.mainSearch?.removeCallbacks(searchCallback)
+
+                // Delay the execution of the search operation by 1 second (adjust as needed)
+                // this prevents running search when the user is typing
+                binding?.mainSearch?.postDelayed(searchCallback, 1000)
+
                 return true
             }
         })
@@ -282,11 +294,12 @@ class LibraryFragment : Fragment() {
 
                 when (searchClickCallback.action) {
                     SEARCH_ACTION_SHOW_METADATA -> {
-                        activity?.showPluginSelectionDialog(
+                        (activity as? MainActivity)?.loadPopup(searchClickCallback.card, load = false)
+                    /*activity?.showPluginSelectionDialog(
                             syncId,
                             syncName,
                             searchClickCallback.card.apiName
-                        )
+                        )*/
                     }
 
                     SEARCH_ACTION_LOAD -> {
@@ -374,7 +387,6 @@ class LibraryFragment : Fragment() {
                     val pages = resource.value
                     val showNotice = pages.all { it.items.isEmpty() }
 
-
                     binding?.apply {
                         emptyListTextview.isVisible = showNotice
                         if (showNotice) {
@@ -397,7 +409,10 @@ class LibraryFragment : Fragment() {
                             0,
                             viewpager.adapter?.itemCount ?: 0
                         )
-                        binding?.viewpager?.setCurrentItem(libraryViewModel.currentPage, false)
+
+                        libraryViewModel.currentPage.value?.let { page ->
+                            binding?.viewpager?.setCurrentItem(page, false)
+                        }
 
                         // Only stop loading after 300ms to hide the fade effect the viewpager produces when updating
                         // Without this there would be a flashing effect:
@@ -438,19 +453,26 @@ class LibraryFragment : Fragment() {
                             tab.view.nextFocusDownId = R.id.search_result_root
 
                             tab.view.setOnClickListener {
-                                libraryViewModel.currentPage = position // updating selected library tab position
-
                                 val currentItem =
                                     binding?.viewpager?.currentItem ?: return@setOnClickListener
                                 val distance = abs(position - currentItem)
                                 hideViewpager(distance)
                             }
                             //Expand the appBar on tab focus
-                            tab.view.setOnFocusChangeListener { view, b ->
+                            tab.view.setOnFocusChangeListener { _, _ ->
                                 binding?.searchBar?.setExpanded(true)
                             }
                         }.attach()
 
+                        binding?.libraryTabLayout?.addOnTabSelectedListener(object: TabLayout.OnTabSelectedListener {
+                            override fun onTabSelected(tab: TabLayout.Tab?) {
+                                binding?.libraryTabLayout?.selectedTabPosition?.let { page ->
+                                    libraryViewModel.switchPage(page)
+                                }
+                            }
+                            override fun onTabUnselected(tab: TabLayout.Tab?) = Unit
+                            override fun onTabReselected(tab: TabLayout.Tab?) = Unit
+                        })
                     }
                 }
 
@@ -466,24 +488,29 @@ class LibraryFragment : Fragment() {
                 }
             }
         }
-        binding?.viewpager?.registerOnPageChangeCallback(object :
+
+        observe(libraryViewModel.currentPage) { position ->
+            val all = binding?.viewpager?.allViews?.toList()
+                ?.filterIsInstance<AutofitRecyclerView>()
+
+            all?.forEach { view ->
+                view.isVisible = view.tag == position
+                view.isFocusable = view.tag == position
+
+                if (view.tag == position)
+                    view.descendantFocusability = FOCUS_AFTER_DESCENDANTS
+                else
+                    view.descendantFocusability = FOCUS_BLOCK_DESCENDANTS
+            }
+        }
+
+        /*binding?.viewpager?.registerOnPageChangeCallback(object :
             ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
-                val all = binding?.viewpager?.allViews?.toList()
-                    ?.filterIsInstance<AutofitRecyclerView>()
 
-                all?.forEach { view ->
-                    view.isVisible = view.tag == position
-                    view.isFocusable = view.tag == position
-
-                    if (view.tag == position)
-                        view.descendantFocusability = FOCUS_AFTER_DESCENDANTS
-                    else
-                        view.descendantFocusability = FOCUS_BLOCK_DESCENDANTS
-                }
                 super.onPageSelected(position)
             }
-        })
+        })*/
     }
     override fun onConfigurationChanged(newConfig: Configuration) {
         (binding?.viewpager?.adapter as? ViewpagerAdapter)?.rebind()
